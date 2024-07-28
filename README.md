@@ -19,3 +19,9 @@ If you’re interested in contributing to this project, feel free to submit a pu
 ## Other Resources
 
 TBD
+## Acknowledgments
+We would like to extend our gratitude for the inspiration provided by:
+
+- [@ChristianLempa](https://github.com/ChristianLempa)
+- [@timothystewart6](https://github.com/timothystewart6)
+
