@@ -1,4 +1,4 @@
-# Contributing to [Your Project Name]
+# Contributing to CodeSpark
 
 Thank you for your interest in contributing your help is crucial in keeping everything up-to-date and improving our offerings.
 
