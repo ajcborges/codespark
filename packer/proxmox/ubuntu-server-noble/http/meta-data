@@ -1,0 +1,22 @@
+``` text
+meta-data
+
+# This file is part of the Packer template located in the ./http/ directory.
+
+# The 'meta-data' file is typically used to define instance metadata
+# when creating images with Packer. Instance metadata can include
+# information like the instance ID, hostname, and other custom metadata
+# that might be required for your build process.
+
+# Example usage:
+# You might include key-value pairs in this file to provide necessary
+# configuration details that need to be baked into the machine image.
+
+# Currently, this file is empty. To use it, add your metadata in the format:
+# key1: value1
+# key2: value2
+# ...
+
+# For more information, refer to the Packer documentation:
+# https://www.packer.io/docs
+```

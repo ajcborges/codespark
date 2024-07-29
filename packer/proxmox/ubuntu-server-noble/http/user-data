@@ -1,0 +1,34 @@
+# Cloud-init configuration for automated installation
+# This section defines the auto-installation configuration
+autoinstall:
+  version: 1
+  locale: en_US                           # Define system locale to your needs
+  keyboard:
+    layout: us                            # Set keyboard layout to your needs
+  ssh:
+    install-server: true                  # Install SSH server
+    allow-pw: true                        # Allow password-based SSH login
+    disable_root: true                    # Disable root login via SSH
+    ssh_quiet_keygen: true                # Suppress SSH key generation messages
+    allow_public_ssh_keys: true           # Allow public SSH keys for authentication
+  packages:
+    - qemu-guest-agent                    # Install QEMU guest agent for virtualization support
+    - sudo                                # Install sudo package for superuser privileges
+  storage:
+    layout:
+      name: direct                        # Use direct layout for storage configuration
+    swap:
+      size: 0                             # Disable swap space
+  user-data:
+    package_upgrade: false
+    timezone: Australia/Melbourne         # Define timezone to your needs
+    users:
+      - name: you-user-name               # Define user with specified name
+        groups: [adm, sudo]               # Add user to adm and sudo groups
+        lock-passwd: false                # Do not lock the user's password
+        sudo: ALL=(ALL) NOPASSWD:ALL      # Grant the user passwordless sudo access
+        shell: /bin/bash                  # Set user's default shell to bash
+        # passwd: your-password           # Set user's password (uncomment to use)
+                                          # Note: Choose between using a password or SSH key for access
+        ssh_authorized_keys:
+          - your-ssh-key                  # Add user's SSH public key for authentication
