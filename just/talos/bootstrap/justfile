@@ -1,50 +1,86 @@
-# --- Configuration ---
+# --- Talos Quick Start Recipes ---
+# Load environment variables from a .env file automatically
 set dotenv-load := true
-talosconfig_path := "../bootstrap/talosconfig"
-kubeconfig_file  := "./alternative-kubeconfig"
 
 # --- Main Recipe ---
-# Chains the flow: Capture info -> Merge Config -> Verify
-init: store-cluster-info local-kubeconfig check-cluster-health
+# Main deployment flow
+init: store-cluster-info get-disks gen-config apply-node-config
+    @echo "Talos Bootstrap has been completed."
 
 # Store cluster information (IPs, cluster name) for later use in other recipes
 store-cluster-info:
     #!/usr/bin/env bash
     set -euo pipefail
     
+    # Capture the cluster name
+    NAME=$(gum input --prompt "Cluster Name: " --placeholder "talos-cluster" --value "atlas")
+    
     # Use --prompt for the label and --placeholder for the example
     CP_IP=$(gum input --prompt "Control Plane IP: " --placeholder "192.168.1.194" --value "192.168.30.201")
     
+    # Use --prompt for the label and --placeholder for the example
+    echo "Enter Worker IPs separated by spaces:"
+    RAW_WORKERS=$(gum input --prompt "Worker IPs: " --placeholder "192.168.1.101 192.168.1.102" --value "192.168.30.202 192.168.30.203")
+    
     # Save to .env so other recipes can use them later
-    echo "CONTROL_PLANE_IP=$CP_IP" > .env
+    echo "K8S_CLUSTER_NAME=$NAME" > .env
+    echo "CONTROL_PLANE_IP=$CP_IP" >> .env
+    echo "WORKER_IPS=\"$RAW_WORKERS\"" >> .env
 
     echo "Stored Info to .env file."
 
-# Generate/Merge local Kubernetes configuration
-local-kubeconfig:
+# View available disks
+get-disks:
+    @echo "Querying {{env_var('CONTROL_PLANE_IP')}}..."
+    talosctl get disks --insecure --nodes {{env_var('CONTROL_PLANE_IP')}}
+
+# Generate Cluster Configuration
+gen-config:
     #!/usr/bin/env bash
     set -euo pipefail
-    # Pull IP from environment (Just loads .env at start)
-    IP="{{env_var('CONTROL_PLANE_IP')}}"
-    echo "Fetching kubeconfig for node $IP..."
+    echo "Generating configuration for {{env_var('K8S_CLUSTER_NAME')}}..."
 
-    # Specify the filename to keep it separate from your default ~/.kube/config [1]
-    talosctl kubeconfig {{kubeconfig_file}} \
-        --nodes "$IP" \
-        --talosconfig {{talosconfig_path}}
+    # We now only prompt for the Disk, since the IP is in the environment
+    DISK=$(gum input --prompt "Install Disk: " --placeholder "sda" --value "sda")
+    echo "DISK=$DISK" >> .env
+    echo "Stored DISK to .env file."
 
-    echo "Kubeconfig saved to {{kubeconfig_file}}"
-    echo "TIP: Run 'export KUBECONFIG=\$PWD/{{kubeconfig_file}}' in your terminal."
+    # just will halt here if 'CONTROL_PLANE_IP' is not set in your .env or environment
+    talosctl gen config {{env_var('K8S_CLUSTER_NAME')}} \
+        https://{{env_var('CONTROL_PLANE_IP')}}:6443 \
+        --install-disk /dev/{{env_var('DISK')}} --force
 
-# Check Cluster Health and Node Status
-check-cluster-health:
+# Apply configurations to bring nodes and cluster online
+apply-node-config:
     #!/usr/bin/env bash
     set -euo pipefail
-    IP="{{env_var('CONTROL_PLANE_IP')}}"
+    echo "Applying configuration to the Control Plane..."
+
+    # Capture the Target IP. 
+    # We provide your stored Control Plane IP as a default value for convenience.
+    IP=$(gum input --prompt "Target Node IP: " --value "{{env_var('CONTROL_PLANE_IP')}}")
+
+    # Select which configuration file to apply
+    FILE=$(gum choose "controlplane.yaml" "worker.yaml")
+
+    echo "Applying $FILE to $IP..."
     
-    echo "Checking Talos API health..."
-    talosctl health --nodes "$IP" --talosconfig {{talosconfig_path}}
+    # Insecure flag is required because the node isn't bootstrapped yet
+    talosctl apply-config --insecure --nodes "$IP" --file "$FILE"
+
+# Set your endpoint and initialize the cluster (Run ONCE on ONE control plane node)
+set-endpoints:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "Setting cluster endpoints..."
+    # Insecure flag is required because the node bootstrapped isn't  completed yet 
+    talosctl --talosconfig=./talosconfig config endpoints "{{env_var('CONTROL_PLANE_IP')}}"
+
+# Bootstrap your etcd cluster (initializes the cluster and should be run ONCE on ONE control plane node)
+bootstrap-cluster:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "Bootstrapping..."
+    # Insecure flag is required because the node bootstrapped isn't  completed yet 
+    talosctl bootstrap --nodes "{{env_var('CONTROL_PLANE_IP')}}" --talosconfig=./talosconfig
     
-    echo "Checking Kubernetes node status..."
-    # We must explicitly point kubectl to the new file
-    kubectl --kubeconfig {{kubeconfig_file}} get nodes
