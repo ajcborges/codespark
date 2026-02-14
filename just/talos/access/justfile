@@ -48,3 +48,14 @@ check-cluster-health:
     echo "Checking Kubernetes node status..."
     # We must explicitly point kubectl to the new file
     kubectl --kubeconfig {{kubeconfig_file}} get nodes
+
+reboot-node:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    # Capture the Target IP. 
+    # We provide your stored Control Plane IP as a default value for convenience.
+    IP=$(gum input --prompt "Target Node IP: " --value "{{env_var('CONTROL_PLANE_IP')}}")
+
+    # Specify the which node to reboot 
+    talosctl reboot --nodes "$IP" --talosconfig {{talosconfig_path}}
