@@ -1,0 +1,81 @@
+# Configuration variables
+ssh_key  := "~/.ssh/rsa_id" # Path to your SSH private key for Proxmox access
+pve_user := "username" # Your Proxmox username
+pve_host := "192.168.30.2"
+pve_ssh  := pve_user + "@" + pve_host
+storage  := "zpool"
+iso_name := "talos-1.12.4.-nocloud-amd64.iso"
+iso_path := "/var/lib/vz/template/iso/" + iso_name
+# Your provided link
+iso_url  := "https://factory.talos.dev/image/3cbe47354d9e61120789577b809fd5738aa607b0afbab74abb10216a4da57903/v1.12.4/nocloud-amd64.iso"
+
+
+# Interactive VM ID using gum
+vm_id    := `gum input --prompt="Input VM ID (e.g. 201) " --value "201"`
+vm_name  := "mlb-k8s-vm-" + vm_id
+
+# List commands
+default:
+    @just --list
+# --- Main Recipe ---
+# Main deployment flow
+deploy-vm: download-iso create-vm start-vm
+    @echo "Talos VM {{vm_id}} has been created and started."
+
+# Copy your local SSH public key to Proxmox for passwordless 'just' commands
+# Test the connection (should return Proxmox version without password)
+check-connection:
+    ssh-copy-id -i {{ssh_key}} {{pve_ssh}}
+    ssh -i {{ssh_key}} {{pve_ssh}} "pveversion"
+
+# --- Deployment ---
+# Phase 1: ISO Acquisition directly to Proxmox
+download-iso:
+    @echo "Checking for Talos ISO on Proxmox..."
+    ssh -i {{ssh_key}} {{pve_ssh}} "[ -f {{iso_path}} ] && echo 'ISO {{iso_name}} already exists. Skipping download.' || (echo 'Downloading {{iso_name}}...' && sudo curl -L {{iso_url}} -o {{iso_path}})"
+
+# Phase 2: VM Creation with optimized Talos settings
+create-vm:
+    @echo "Creating Talos VM {{vm_id}}..."
+    ssh -i {{ssh_key}} {{pve_ssh}} "sudo qm create {{vm_id}} \
+        --name {{vm_name}} \
+        --memory 4096 \
+        --cores 2 \
+        --cpu host \
+        --net0 virtio,bridge=vmbr0 \
+        --scsihw virtio-scsi-pci \
+        --scsi0 {{storage}}:40,discard=on \
+        --machine q35 \
+        --tablet 0 \
+        --agent enabled=1 \
+        --ostype l26 \
+        --ide2 local:iso/{{iso_name}},media=cdrom \
+        --boot 'order=scsi0;ide2'"
+
+# Phase 3: Launch
+start-vm:
+    @echo "Starting VM {{vm_id}}..."
+    ssh -i {{ssh_key}} {{pve_ssh}} "sudo qm start {{vm_id}}"
+
+# --- Operational Recipes ---
+#
+# Cleanly reboot the VM (Requires Guest Agent to be running)
+reboot-vm:
+    @echo "Requesting clean reboot for VM {{vm_id}}..."
+    ssh -i {{ssh_key}} {{pve_ssh}} "sudo qm reboot {{vm_id}}"
+#
+# Hard reset the VM (Equivalent to pulling power/hitting reset button)
+reset-vm:
+    @echo "Hard resetting VM {{vm_id}}..."
+    ssh -i {{ssh_key}} {{pve_ssh}} "sudo qm reset {{vm_id}}"
+
+# --- Clean-up Recipes ---
+#
+# Stop and completely remove the VM (Warning: Destructive!)
+destroy-vm:
+    @echo "Stopping and destroying VM {{vm_id}}..."
+    # '|| true' ensures the command continues even if the VM is already stopped
+    ssh -i {{ssh_key}} {{pve_ssh}} "sudo qm stop {{vm_id}} || true"
+    ssh -i {{ssh_key}} {{pve_ssh}} "sudo qm destroy {{vm_id}} --purge"
+    @echo "VM {{vm_id}} has been deleted."
+
