@@ -1,0 +1,50 @@
+# --- Configuration ---
+set dotenv-load := true
+talosconfig_path := "../bootstrap/talosconfig"
+kubeconfig_file  := "./alternative-kubeconfig"
+
+# --- Main Recipe ---
+# Chains the flow: Capture info -> Merge Config -> Verify
+init: store-cluster-info local-kubeconfig check-cluster-health
+
+# Store cluster information (IPs, cluster name) for later use in other recipes
+store-cluster-info:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    
+    # Use --prompt for the label and --placeholder for the example
+    CP_IP=$(gum input --prompt "Control Plane IP: " --placeholder "192.168.1.194" --value "192.168.30.201")
+    
+    # Save to .env so other recipes can use them later
+    echo "CONTROL_PLANE_IP=$CP_IP" > .env
+
+    echo "Stored Info to .env file."
+
+# Generate/Merge local Kubernetes configuration
+local-kubeconfig:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # Pull IP from environment (Just loads .env at start)
+    IP="{{env_var('CONTROL_PLANE_IP')}}"
+    echo "Fetching kubeconfig for node $IP..."
+
+    # Specify the filename to keep it separate from your default ~/.kube/config [1]
+    talosctl kubeconfig {{kubeconfig_file}} \
+        --nodes "$IP" \
+        --talosconfig {{talosconfig_path}}
+
+    echo "Kubeconfig saved to {{kubeconfig_file}}"
+    echo "TIP: Run 'export KUBECONFIG=\$PWD/{{kubeconfig_file}}' in your terminal."
+
+# Check Cluster Health and Node Status
+check-cluster-health:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    IP="{{env_var('CONTROL_PLANE_IP')}}"
+    
+    echo "Checking Talos API health..."
+    talosctl health --nodes "$IP" --talosconfig {{talosconfig_path}}
+    
+    echo "Checking Kubernetes node status..."
+    # We must explicitly point kubectl to the new file
+    kubectl --kubeconfig {{kubeconfig_file}} get nodes
